@@ -145,6 +145,10 @@ class Card_Cluster(list):
   def add_card(self, card: Card) -> None:
     self.append(card)
   
+  def add_cards(self, cards) -> None:
+    for card in cards:
+      self.add_card(card)
+  
   def unshift_card(self, card: Card) -> None:
     self.insert(0, card)
   
