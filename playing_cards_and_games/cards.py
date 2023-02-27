@@ -138,70 +138,71 @@ class Card:
 
 
 
+class Card_Cluster(list):
+  def __init__(self) -> None:
+    super().__init__()
+
+  def add_card(self, card: Card) -> None:
+    self.append(card)
+  
+  def unshift_card(self, card: Card) -> None:
+    self.insert(0, card)
+  
+  def unshift_cards(self, cards) -> None:
+    for card in reversed(cards):
+      self.unshift_card(card)
+  
+  def insert_card(self, card: Card, cards_from_top: int) -> None:
+    self.insert(- cards_from_top, card)
+  
+  def has_card(self, card: Card) -> bool:
+    return card in self
+  
+  def remove_card(self, card: Card) -> None:
+    self.remove(card)
+  
+  def remove_from_top(self) -> Card:
+    return self.pop()
+  
+  def remove_cards_from_top(self, number_of_cards: int) -> list[Card]:
+    cards = []
+    for _ in range(number_of_cards):
+      cards.insert(0, self.remove_from_top())
+    return cards
+  
+  def peek_at_top(self) -> Card:
+    return self[-1]
+  
+  def get_cards_from_top(self, number_of_cards: int) -> list[Card]:
+    return self[-number_of_cards:]
+
+
+
 class Deck:
   def __init__(self, has_joker:bool=False) -> None:
     """
     Last card in the list is the card on top of the deck
     """
 
-    self.cards: list[Card] = []
+    self.cards = Card_Cluster()
 
     for suit in (Suits.Club, Suits.Heart, Suits.Diamond, Suits.Spade):
       for number in range(1, 14):
         # self.cards.append(Card(suit, number))
-        self.add_card(Card(suit, number))
+        self.cards.add_card(Card(suit, number))
     
     if has_joker:
-      # self.cards.append(Card(Suits.Joker, color=Colors.Black))
-      # self.cards.append(Card(Suits.Joker, color=Colors.Red))
-      self.add_card(Card(Suits.Joker, color=Colors.Black))
-      self.add_card(Card(Suits.Joker, color=Colors.Red))
+      self.cards.add_card(Card(Suits.Joker, color=Colors.Black))
+      self.cards.add_card(Card(Suits.Joker, color=Colors.Red))
   
   def __str__(self) -> str:
     return str(self.cards)
   def __repr__(self) -> str:
     return self.__str__()
-  
-  @property
-  def cards(self) -> list[Card]:
-    return self._cards
-  
-  @cards.setter
-  def cards(self, value):
-    self._cards = value
-  
-  def add_card(self, card: Card) -> None:
-    self.cards.append(card)
-  
-  def has_card(self, card: Card) -> bool:
-    return card in self.cards
-  
-  def remove_card(self, card: Card) -> None:
-    self.cards.remove(card)
-  
-  def remove_from_top(self) -> Card:
-    return self.cards.pop()
-  
-  def peek_at_top(self) -> Card:
-    return self.cards[-1]
-  
+
   def shuffle_deck(self) -> None:
     random.shuffle(self.cards)
   
   def split_deck(self, number_of_cards_from_top: int):
-    top_part = self.cards[-number_of_cards_from_top:]
-    print("top part:", top_part, end="\n\n")
-    bottom_part = self.cards[:-number_of_cards_from_top]
-    print("bottom part:", bottom_part, end="\n\n")
-    # self.cards = bottom_part.extend(top_part)
-    self.cards = top_part
-    self.cards.extend(bottom_part)
-
-
-
-my_deck = Deck()
-my_deck.shuffle_deck()
-print(my_deck, end="\n\n")
-
-my_deck.split_deck(3)
-print(my_deck, end="\n\n")
+    bottom_part = self.cards.remove_cards_from_top(number_of_cards_from_top)
+    self.cards.unshift_cards(bottom_part)
