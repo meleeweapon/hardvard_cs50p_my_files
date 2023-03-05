@@ -184,6 +184,7 @@ class Card_Cluster(list):
 
 class Deck:
   def __init__(self, has_joker:bool=False) -> None:
+    # add parameter to add more decks
     """
     Last card in the list is the card on top of the deck
     """
