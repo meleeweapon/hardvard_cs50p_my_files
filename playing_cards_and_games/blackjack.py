@@ -38,7 +38,10 @@ class Blackjack_Game:
     print("starting sequence")
     self.starting_sequence()
     print(" dealer: ", self.dealer.hand)
-    print("players: ", *self.all_hands(), sep="\n")
+    # print("players: ", *self.all_hands(), sep="\n")
+    for player in self.players:
+      print(player.player_name, int_to_player_state[player.state], player.hand, self.dealer.all_possible_hand_values(player.hand))
+    self.update_player_states()
 
     # player cycle
     while True:
@@ -46,13 +49,12 @@ class Blackjack_Game:
       print("first round")
 
 
-      self.update_player_states()
       if len(list(self.playing_players())) < 1:
         break
 
       print(f"dealer {self.dealer.all_possible_hand_values(self.dealer.hand)}", self.dealer.hand)
       for player in self.players:
-        print(player.player_name, int_to_player_state[player.state], self.dealer.all_possible_hand_values(player.hand))
+        print(player.player_name, int_to_player_state[player.state], player.hand, self.dealer.all_possible_hand_values(player.hand))
       
       if len(list(self.playing_and_card_receiving_players())) < 1:
         break
@@ -60,8 +62,8 @@ class Blackjack_Game:
       # for player in self.playing_players():
       for player in self.playing_and_card_receiving_players():
         while True:
-          # player_input = input(f"player {player.player_name}, enter action: ").strip().title()
-          player_input = "Stand"
+          player_input = input(f"player {player.player_name}, enter action: ").strip().title()
+          # player_input = "Stand"
           try:
             # success = self.dealer.request_action(player.hand, player_action_to_int[player_input])
             success = self.dealer.request_action(player, player_action_to_int[player_input])
@@ -69,8 +71,13 @@ class Blackjack_Game:
             print("enter a valid action")
             continue
           if success:
-            break
-        print(player.hand)
+            # self.update_player_states()
+            self.update_player_state(player)
+            if player not in self.playing_and_card_receiving_players():
+              break
+            # break
+          print(player.hand)
+        # print(player.hand)
     
     # dealer hand cycle
     while (
@@ -96,12 +103,12 @@ class Blackjack_Game:
     else:
       for player in self.playing_players():
         if any(
-          hand_value > dealer_hand and hand_value < 21 
+          hand_value > dealer_hand and hand_value <= 21 
           for hand_value in self.dealer.all_possible_hand_values(player.hand)
         ):
           player.state = Player_States.Won
         elif any(
-          hand_value == dealer_hand and hand_value < 21 
+          hand_value == dealer_hand and hand_value <= 21 
           for hand_value in self.dealer.all_possible_hand_values(player.hand)
         ):
           player.state = Player_States.Pushed
@@ -113,7 +120,7 @@ class Blackjack_Game:
 
 
   def starting_sequence(self) -> None:
-    self.dealer.deal_cards(self.dealer.hand, 1)
+    self.dealer.deal_cards(self.dealer.hand, 2)
     self.dealer.deal_cards_to_all(self.all_hands(), 2)
     for player in self.players:
       player.state = Player_States.Playing
@@ -121,11 +128,12 @@ class Blackjack_Game:
     
   def end_game(self) -> None:
     self.playing = False
+
     print(f"\n")
     print(f"end game results")
     print(f"dealer {self.dealer.all_possible_hand_values(self.dealer.hand)}", self.dealer.hand)
     for player in self.players:
-      print(f"{player.player_name} {int_to_player_state[player.state]}", player.hand)
+      print(f"{player.player_name} {int_to_player_state[player.state]}", player.hand, self.dealer.all_possible_hand_values(player.hand))
   
   def all_hands(self) -> list[Card_Cluster]:
     return (player.hand for player in self.players)
@@ -134,10 +142,19 @@ class Blackjack_Game:
     return (player for player in self.players if player.state == Player_States.Playing)
   
   def playing_and_card_receiving_players(self) -> list:
-    return (player for player in self.playing_players() if player.hand_state == Player_Hand_States.Receiving_Cards or player.hand_state == Player_Hand_States.Took_A_Card)
+    return (
+      player for player in self.playing_players() 
+      if (
+        player.hand_state == Player_Hand_States.Receiving_Cards 
+        or player.hand_state == Player_Hand_States.Took_A_Card
+      )
+    )
   
   def update_player_states(self) -> None:
     for player in self.playing_players():
+      self.update_player_state(player)
+
+  def update_player_state(self, player) -> None:
       comparison_to_21 = self.dealer.compare_to_21(player.hand)
       # print("comparing to 21", player.hand, comparison_to_21)
       match comparison_to_21:
@@ -146,7 +163,9 @@ class Blackjack_Game:
         case Hand_Comparison_To_21.Greater_Than_21:
           player.state = Player_States.Lost
         case Hand_Comparison_To_21.Equal_To_21:
-          player.state = Player_States.Won
+          player.state = Player_States.Playing
+          player.hand_state = Player_Hand_States.Hit_Blackjack
+          # player.state = Player_States.Won
 
       # if self.dealer.hand_is_over_21(player.hand):
       #   player.state = Player_States.Lost
@@ -178,7 +197,10 @@ class Dealer:
   def request_action(self, requesting_player, action: int) -> bool:
     match action:
       case Player_Actions.Hit:
-        if requesting_player.hand_state != Player_Hand_States.Receiving_Cards and requesting_player.hand_state != Player_Hand_States.Took_A_Card:
+        if (
+          requesting_player.hand_state != Player_Hand_States.Receiving_Cards 
+          and requesting_player.hand_state != Player_Hand_States.Took_A_Card
+        ):
           return False
         # if self.hand_is_over_21(requestors_hand):
         #   return False
@@ -255,14 +277,16 @@ class Player_Hand_States:
   Doubled_Down = 3
   Not_Playing = 4
   Took_A_Card = 5
+  Hit_Blackjack = 6
 player_hand_states_to_int = {
   "Receiving Cards": 1,
   "Standing": 2,
   "Doubled Down": 3,
   "Not Playing": 4,
   "Took A Card": 5,
+  "Hit Blackjack": 6,
 }
-int_to_player_hand_states = {value: key for key, value in player_state_to_int.items()}
+int_to_player_hand_states = {value: key for key, value in player_hand_states_to_int.items()}
 
 
 class Player:
@@ -276,12 +300,15 @@ class Player:
   def state(self) -> int:
     return self._state
   
+  @state.setter
   def state(self, value: int) -> None:
     self._state = value
     match value:
       case Player_States.Playing:
-        self.hand_state = Player_Hand_States.Receiving_Cards
-      case Player_States.Idle | Player_States.Lost | Player_States.Won:
+        pass
+        # self.hand_state = Player_Hand_States.Receiving_Cards
+      # case Player_States.Idle | Player_States.Lost | Player_States.Won | Player_States.Pushed:
+      case _:
         self.hand_state = Player_Hand_States.Not_Playing
 
   
