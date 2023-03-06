@@ -183,18 +183,17 @@ class Card_Cluster(list):
 
 
 class Deck:
-  def __init__(self, has_joker:bool=False) -> None:
-    # add parameter to add more decks
+  def __init__(self, number_of_decks:int=1, has_joker:bool=False) -> None:
     """
     Last card in the list is the card on top of the deck
     """
 
     self.cards = Card_Cluster()
 
-    for suit in (Suits.Club, Suits.Heart, Suits.Diamond, Suits.Spade):
-      for number in range(1, 14):
-        # self.cards.append(Card(suit, number))
-        self.cards.add_card(Card(suit, number))
+    for _ in range(number_of_decks):
+      for suit in (Suits.Club, Suits.Heart, Suits.Diamond, Suits.Spade):
+        for number in range(1, 14):
+          self.cards.add_card(Card(suit, number))
     
     if has_joker:
       self.cards.add_card(Card(Suits.Joker, color=Colors.Black))
