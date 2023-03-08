@@ -1,7 +1,11 @@
+# TODO: implement bets
+# TODO: implement split
+# TODO: evaluate probability map for player actions
+
 from cards import *
 
 def main() -> None:
-  my_game = Blackjack_Game(4)
+  my_game = Blackjack_Game(4, 2, True)
   my_game.start_game()
 
 
@@ -22,137 +26,249 @@ int_to_player_action = {value: key for key, value in player_action_to_int.items(
 
 
 class Blackjack_Game:
-  def __init__(self, number_of_players: int) -> None:
-    self.dealer = Dealer()
+  def __init__(self, number_of_players: int, number_of_decks: int=1, play_forever: bool=False) -> None:
+    self.dealer = Dealer(number_of_decks, reshuffle_when_deck_is_empty=play_forever)
     self.players = [Player(f"Player {index}") for index in range(number_of_players)]
 
     self.playing = False
+    self.play_forever = play_forever
 
   
   def start_game(self) -> None:
     self.playing = True
     self.dealer.shuffle_deck()
+    # print(self.dealer.deck.cards)
+    # print(len(self.dealer.deck.cards))
     self.game_loop()
   
   def game_loop(self) -> None:
-    self.starting_sequence()
-    print(" dealer: ", self.dealer.hand)
-    for player in self.players:
-      print(
-        player.player_name, 
-        int_to_player_state[player.state], 
-        player.hand, 
-        self.dealer.all_possible_hand_values(player.hand)
-      )
-    self.update_player_states()
+    round_number = 0
+    total_number_of_cards = self.dealer.deck.number_of_decks * 52
 
-    # player cycle
+    # round cycle
+    # continue the game until there are less than 25% of all cards
     while True:
-      print("\n")
-      print("first round")
+      current_number_of_cards = len(self.dealer.deck.cards)
+      if not self.play_forever:
+        if not (current_number_of_cards / total_number_of_cards > 0.25):
+          break
+      else:
+        if not (current_number_of_cards / total_number_of_cards > 0.25):
+          print("reshuffling cards")
+          print("deck", len(self.dealer.deck.cards))
+          print("used", len(self.dealer.used_cards))
+          self.dealer.used_cards_to_deck()
+          print("deck", len(self.dealer.deck.cards))
+          print("used", len(self.dealer.used_cards))
 
 
-      if len(list(self.playing_players())) < 1:
-        break
 
+      round_number += 1
+      self.starting_sequence()
+      print("")
+      print("")
+      # print(" round cycle")
+      print(f"round {round_number}")
+      # for player in self.players:
+      #   print(
+      #     player.player_name, 
+      #     int_to_player_state[player.state], 
+      #     player.hand, 
+      #     self.dealer.all_possible_hand_values(player.hand)
+      #   )
+      self.update_player_states()
+
+      # player cycle
+      while True:
+        if len(list(self.playing_players())) < 1:
+          break
+        if len(list(self.playing_and_card_receiving_players())) < 1:
+          break
+        
+        print("")
+        print(
+          f"dealer",
+          # self.dealer.all_possible_hand_values(self.dealer.hand), 
+          [self.dealer.hand[0], "Hidden Card"],
+          
+        )
+        for player in self.players:
+          print(
+            player.player_name, 
+            int_to_player_state[player.state], 
+            player.hand, 
+            self.dealer.all_possible_hand_values(player.hand)
+          )
+        print("")
+
+
+        # check if dealer got blackjack before asking players
+        if self.dealer.hand_is_21(self.dealer.hand):
+          dealer_hand = 21
+          for player in self.playing_players():
+            # if player hand equals to dealer hand
+            if any(
+              hand_value == dealer_hand and hand_value <= 21 
+              for hand_value in self.dealer.all_possible_hand_values(player.hand)
+            ):
+              # check if dealer has 21, also should mean player has 21
+              # blackjack > 21
+              if dealer_hand == 21:
+                if len(self.dealer.hand) == 2: # dealer has blackjack
+                  if len(player.hand) == 2: # player has blackjack
+                    player.state = Player_States.Pushed
+                  else:
+                    player.state = Player_States.Lost # dealer blackjack player no blackjack
+                else:
+                  if len(player.hand) == 2: # player has blackjack
+                    player.state = Player_States.Won # dealer no blackjack player blackjack
+                  else:
+                    player.state = Player_States.Pushed # dealer no blackjack player no blackjack
+              else:
+                # otherwise they push
+                player.state = Player_States.Pushed
+            else:
+              player.state = Player_States.Lost
+
+        else: # if dealer hasn't got blackjack
+          for player in self.playing_and_card_receiving_players():
+            while True:
+              # player_input = input(f"player {player.player_name}, enter action: ").strip().title()
+              player_input = "Stand"
+              try:
+                # success = self.dealer.request_action(player.hand, player_action_to_int[player_input])
+                success = self.dealer.request_action(player, player_action_to_int[player_input])
+              except KeyError:
+                print("enter a valid action")
+                continue
+              if success:
+                # self.update_player_states()
+                print(player.hand)
+                self.update_player_state(player)
+                if player not in self.playing_and_card_receiving_players():
+                  break
+                # break
+            # print(player.hand)
+        
+        # dealer hand cycle
+        while (
+          not any(
+            hand_value >= 17 and hand_value <= 21 
+            for hand_value in self.dealer.all_possible_hand_values(self.dealer.hand)
+          )
+          and min(self.dealer.all_possible_hand_values(self.dealer.hand)) < 21
+        ):
+          self.dealer.deal_cards(self.dealer.hand)
+        
+        dealer_hand = max(
+          (
+            hand_value 
+            for hand_value in self.dealer.all_possible_hand_values(self.dealer.hand) 
+            if hand_value <= 21
+          )
+          , default= max(self.dealer.all_possible_hand_values(self.dealer.hand))
+        )
+        if dealer_hand > 21:
+          for player in self.playing_players():
+            player.state = Player_States.Won
+        else:
+          for player in self.playing_players():
+            # if player hand bigger than dealer hand
+            if any(
+              hand_value > dealer_hand and hand_value <= 21 
+              for hand_value in self.dealer.all_possible_hand_values(player.hand)
+            ):
+              player.state = Player_States.Won
+            # if player hand equals to dealer hand
+            elif any(
+              hand_value == dealer_hand and hand_value <= 21 
+              for hand_value in self.dealer.all_possible_hand_values(player.hand)
+            ):
+              # check if dealer has 21, also should mean player has 21
+              # blackjack > 21
+              if dealer_hand == 21:
+                if len(self.dealer.hand) == 2: # dealer has blackjack
+                  if len(player.hand) == 2: # player has blackjack
+                    player.state = Player_States.Pushed
+                  else:
+                    player.state = Player_States.Lost # dealer blackjack player no blackjack
+                else:
+                  if len(player.hand) == 2: # player has blackjack
+                    player.state = Player_States.Won # dealer no blackjack player blackjack
+                  else:
+                    player.state = Player_States.Pushed # dealer no blackjack player no blackjack
+              else:
+                # otherwise they push
+                player.state = Player_States.Pushed
+            else:
+              player.state = Player_States.Lost
+
+
+      print("")
+      print(" result")
+      print(f"round {round_number} results")
       print(
         f"dealer {self.dealer.all_possible_hand_values(self.dealer.hand)}", 
         self.dealer.hand
       )
       for player in self.players:
         print(
-          player.player_name, 
-          int_to_player_state[player.state], 
+          f"{player.player_name} {int_to_player_state[player.state]}", 
           player.hand, 
           self.dealer.all_possible_hand_values(player.hand)
         )
-      
-      if len(list(self.playing_and_card_receiving_players())) < 1:
-        break
-      
-      # for player in self.playing_players():
-      for player in self.playing_and_card_receiving_players():
-        while True:
-          player_input = input(f"player {player.player_name}, enter action: ").strip().title()
-          # player_input = "Stand"
-          try:
-            # success = self.dealer.request_action(player.hand, player_action_to_int[player_input])
-            success = self.dealer.request_action(player, player_action_to_int[player_input])
-          except KeyError:
-            print("enter a valid action")
-            continue
-          if success:
-            # self.update_player_states()
-            self.update_player_state(player)
-            if player not in self.playing_and_card_receiving_players():
-              break
-            # break
-          print(player.hand)
-        # print(player.hand)
-    
-    # dealer hand cycle
-    while (
-      not any(
-        hand_value >= 17 and hand_value <= 21 
-        for hand_value in self.dealer.all_possible_hand_values(self.dealer.hand)
-      )
-      and min(self.dealer.all_possible_hand_values(self.dealer.hand)) < 21
-    ):
-      self.dealer.deal_cards(self.dealer.hand)
-    
-    dealer_hand = max(
-      (
-        hand_value 
-        for hand_value in self.dealer.all_possible_hand_values(self.dealer.hand) 
-        if hand_value <= 21
-      )
-      , default= max(self.dealer.all_possible_hand_values(self.dealer.hand))
-    )
-    if dealer_hand > 21:
-      for player in self.playing_players():
-        player.state = Player_States.Won
-    else:
-      for player in self.playing_players():
-        if any(
-          hand_value > dealer_hand and hand_value <= 21 
-          for hand_value in self.dealer.all_possible_hand_values(player.hand)
-        ):
-          player.state = Player_States.Won
-        elif any(
-          hand_value == dealer_hand and hand_value <= 21 
-          for hand_value in self.dealer.all_possible_hand_values(player.hand)
-        ):
-          player.state = Player_States.Pushed
-        else:
-          player.state = Player_States.Lost
 
+      self.collect_all_hands()
 
+      # end of round
+      print("")
+
+    # end of game
     self.end_game()
 
 
   def starting_sequence(self) -> None:
-    print("starting sequence")
-    self.dealer.deal_cards(self.dealer.hand, 2)
-    self.dealer.deal_cards_to_all(self.all_hands(), 2)
+    # print(" starting sequence")
+    # reset all hands after a round
+    self.collect_all_hands()
     for player in self.players:
+      # also reset player states
       player.state = Player_States.Playing
       player.hand_state = Player_Hand_States.Receiving_Cards
+
+    self.dealer.deal_cards_to_all(self.all_hands(), 1)
+    # hidden card
+    self.dealer.deal_cards(self.dealer.hand, 1)
+    self.dealer.deal_cards_to_all(self.all_hands(), 1)
+    # open card (hole card)
+    self.dealer.deal_cards(self.dealer.hand, 1)
+  
+  def collect_all_hands(self) -> None:
+    if len(self.dealer.hand) > 0:
+      self.dealer.move_cards(self.dealer.hand, self.dealer.used_cards, len(self.dealer.hand))
+    for player in self.players:
+      if len(player.hand) > 0:
+        self.dealer.move_cards(player.hand, self.dealer.used_cards, len(player.hand))
+
     
   def end_game(self) -> None:
     self.playing = False
-
-    print(f"\n")
-    print(f"end game results")
-    print(
-      f"dealer {self.dealer.all_possible_hand_values(self.dealer.hand)}", 
-      self.dealer.hand
-    )
     for player in self.players:
-      print(
-        f"{player.player_name} {int_to_player_state[player.state]}", 
-        player.hand, 
-        self.dealer.all_possible_hand_values(player.hand)
-      )
+      player.state = Player_States.Idle
+
+    print(f" end game")
+    # print(self.dealer.deck.cards)
+    # print(f"end game results")
+    # print(
+    #   f"dealer {self.dealer.all_possible_hand_values(self.dealer.hand)}", 
+    #   self.dealer.hand
+    # )
+    # for player in self.players:
+    #   print(
+    #     f"{player.player_name} {int_to_player_state[player.state]}", 
+    #     player.hand, 
+    #     self.dealer.all_possible_hand_values(player.hand)
+    #   )
   
   def all_hands(self) -> list[Card_Cluster]:
     return (player.hand for player in self.players)
@@ -186,28 +302,65 @@ class Blackjack_Game:
           player.state = Player_States.Lost
         case Hand_Comparison_To_21.Equal_To_21:
           player.state = Player_States.Playing
-          player.hand_state = Player_Hand_States.Hit_Blackjack
+          if len(player.hand) == 2:
+            player.hand_state = Player_Hand_States.Hit_Blackjack
+          else:
+            player.hand_state = Player_Hand_States.Standing
           # player.state = Player_States.Won
 
       # if self.dealer.hand_is_over_21(player.hand):
       #   player.state = Player_States.Lost
 
+  @property
+  def play_forever(self) -> bool:
+    return self._play_forever
+  @play_forever.setter
+  def play_forever(self, value):
+    self._play_forever = value
+    self.dealer.reshuffle_when_deck_is_empty = value
+
 
 class Dealer:
-  def __init__(self) -> None:
+  def __init__(self, number_of_decks: int=1, reshuffle_when_deck_is_empty: bool=False) -> None:
     # self.deck = Deck()
     # self.hand = Card_Cluster()
     # self.used_cards = Card_Cluster()
-    self.deck = Deck()
+    self.reshuffle_when_deck_is_empty = reshuffle_when_deck_is_empty
+    self.deck = Deck(number_of_decks)
     self.hand = Card_Cluster()
     self.used_cards = Card_Cluster()
   
   def shuffle_deck(self) -> None:
     self.deck.shuffle_deck()
   
-  def move_cards(self, source: Card_Cluster, destination: Card_Cluster, number_of_cards: int=1) -> None:
-    destination.add_cards(source.remove_cards_from_top(number_of_cards))
+  def used_cards_to_deck(self) -> None:
+    self.deck.cards.add_cards(self.used_cards.remove_cards_from_top(len(self.used_cards)))
+    self.deck.shuffle_deck()
+    # burn card
+    burn_card = self.deck.cards.remove_from_top()
+    self.used_cards.add_card(burn_card)
 
+  
+  def enough_cards_check(func):
+    def ooga(self, source, destination, number_of_cards: int=1) -> None:
+      if len(source) < number_of_cards:
+        if source == self.deck.cards:
+          self.used_cards_to_deck()
+          print("NO CARDS LEFT, RESHUFFLING THE DECK")
+          print("")
+      func(self, source, destination, number_of_cards)
+    return ooga
+
+  # @enough_cards_check
+  def move_cards(self, source: Card_Cluster, destination: Card_Cluster, number_of_cards: int=1) -> None:
+    if self.reshuffle_when_deck_is_empty:
+      if len(source) < number_of_cards:
+        if source == self.deck.cards:
+          print("NO CARDS LEFT, RESHUFFLING THE DECK")
+          print("")
+          self.used_cards_to_deck()
+    destination.add_cards(source.remove_cards_from_top(number_of_cards))
+  
   def deal_cards(self, destination: Card_Cluster, number_of_cards: int=1) -> None:
     self.move_cards(self.deck.cards, destination, number_of_cards)
   

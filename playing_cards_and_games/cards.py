@@ -188,9 +188,10 @@ class Deck:
     Last card in the list is the card on top of the deck
     """
 
+    self.number_of_decks = number_of_decks
     self.cards = Card_Cluster()
 
-    for _ in range(number_of_decks):
+    for _ in range(self.number_of_decks):
       for suit in (Suits.Club, Suits.Heart, Suits.Diamond, Suits.Spade):
         for number in range(1, 14):
           self.cards.add_card(Card(suit, number))
