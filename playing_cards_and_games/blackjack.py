@@ -1,11 +1,11 @@
-# TODO: implement bets
 # TODO: implement split
-# TODO: evaluate probability map for player actions
 
 from cards import *
 
 def main() -> None:
-  my_game = Blackjack_Game(4, 2, True)
+  my_dealer = Dealer(2000, 2, True)
+  my_players = [Player(f"Player {index}", 10_000) for index in range(4)]
+  my_game = Blackjack_Game(my_dealer, my_players, 500)
   my_game.start_game()
 
 
@@ -24,14 +24,247 @@ player_action_to_int = {
 }
 int_to_player_action = {value: key for key, value in player_action_to_int.items()}
 
+class Hand_Comparison_To_21:
+  Smaller_Than_21 = 1
+  Equal_To_21 = 2
+  Greater_Than_21 = 3
+
+class Player_States:
+  Idle = 1
+  Playing = 2
+  Lost = 3
+  Won = 4
+  Pushed = 5
+player_state_to_int = {
+  "Idle": 1,
+  "Playing": 2,
+  "Lost": 3,
+  "Won": 4,
+  "Pushed": 5,
+}
+int_to_player_state = {value: key for key, value in player_state_to_int.items()}
+
+class Player_Hand_States:
+  Receiving_Cards = 1
+  Standing = 2
+  Doubled_Down = 3
+  Not_Playing = 4
+  Took_A_Card = 5
+  Hit_Blackjack = 6
+player_hand_states_to_int = {
+  "Receiving Cards": 1,
+  "Standing": 2,
+  "Doubled Down": 3,
+  "Not Playing": 4,
+  "Took A Card": 5,
+  "Hit Blackjack": 6,
+}
+int_to_player_hand_states = {value: key for key, value in player_hand_states_to_int.items()}
+
+
+class Player:
+  def __init__(self, player_name: str, total_money: int=0) -> None:
+    self.player_name = player_name
+    self.hand = Card_Cluster()
+    self.state = Player_States.Idle
+    self.hand_state = Player_Hand_States.Not_Playing
+    self.total_money = total_money
+    self.hand_bet = 0
+  
+  @property
+  def state(self) -> int:
+    return self._state
+  
+  @state.setter
+  def state(self, value: int) -> None:
+    self._state = value
+    match value:
+      case Player_States.Playing:
+        pass
+        # self.hand_state = Player_Hand_States.Receiving_Cards
+      # case Player_States.Idle | Player_States.Lost | Player_States.Won | Player_States.Pushed:
+      case _:
+        self.hand_state = Player_Hand_States.Not_Playing
+
+
+
+class Dealer:
+  def __init__(self, total_money:int, number_of_decks: int=1, reshuffle_when_deck_is_empty: bool=False) -> None:
+    # self.deck = Deck()
+    # self.hand = Card_Cluster()
+    # self.used_cards = Card_Cluster()
+    self.reshuffle_when_deck_is_empty = reshuffle_when_deck_is_empty
+    self.deck = Deck(number_of_decks)
+    self.hand = Card_Cluster()
+    self.used_cards = Card_Cluster()
+    self.total_money = total_money
+  
+  def resolve_bet(self, player: Player):
+    player_bet = player.hand_bet
+    player.hand_bet = 0
+    match player.state:
+      case Player_States.Won:
+        # check if house has enough money
+        # if not
+        if player_bet > self.total_money:
+          remaining_money = self.total_money
+          self.total_money = 0
+          player.total_money += remaining_money + player_bet
+          # returning true means house ran out of money
+          return True
+        else: # has enough money
+          self.total_money -= player_bet
+          player.total_money += player_bet * 2
+      case Player_States.Lost:
+        self.total_money += player_bet
+      case Player_States.Pushed:
+        player.total_money += player_bet
+    return False
+
+
+  def ask_for_bet(self, player: Player, min_bet) -> None:
+    print("")
+    while True:
+      bet_amount = input(f"player {player.player_name}, enter bet amount: ").strip().title()
+      try:
+        # success = self.dealer.request_action(player.hand, player_action_to_int[player_input])
+        bet_amount = int(bet_amount)
+      except ValueError:
+        print("enter a valid bet amount, must be an integer")
+        continue
+      if bet_amount < min_bet:
+        print(f"enter at least {min_bet}")
+        continue
+      player.total_money -= bet_amount
+      player.hand_bet = bet_amount
+      print(player.hand_bet)
+      break
+  
+  def shuffle_deck(self) -> None:
+    self.deck.shuffle_deck()
+  
+  def used_cards_to_deck(self) -> None:
+    self.deck.cards.add_cards(self.used_cards.remove_cards_from_top(len(self.used_cards)))
+    self.deck.shuffle_deck()
+    # burn card
+    burn_card = self.deck.cards.remove_from_top()
+    self.used_cards.add_card(burn_card)
+
+  
+  def enough_cards_check(func):
+    def ooga(self, source, destination, number_of_cards: int=1) -> None:
+      if len(source) < number_of_cards:
+        if source == self.deck.cards:
+          self.used_cards_to_deck()
+          print("NO CARDS LEFT, RESHUFFLING THE DECK")
+          print("")
+      func(self, source, destination, number_of_cards)
+    return ooga
+
+  # @enough_cards_check
+  def move_cards(self, source: Card_Cluster, destination: Card_Cluster, number_of_cards: int=1) -> None:
+    if self.reshuffle_when_deck_is_empty:
+      if len(source) < number_of_cards:
+        if source == self.deck.cards:
+          print("NO CARDS LEFT, RESHUFFLING THE DECK")
+          print("")
+          self.used_cards_to_deck()
+    destination.add_cards(source.remove_cards_from_top(number_of_cards))
+  
+  def deal_cards(self, destination: Card_Cluster, number_of_cards: int=1) -> None:
+    self.move_cards(self.deck.cards, destination, number_of_cards)
+  
+  def deal_cards_to_all(self, destinations: list[Card_Cluster], number_of_cards: int=1) -> None:
+    for destination in destinations:
+      self.deal_cards(destination, number_of_cards)
+  
+  # def request_action(self, requestors_hand: Card_Cluster, action: int) -> bool:
+  def request_action(self, requesting_player: Player, action: int) -> bool:
+    match action:
+      case Player_Actions.Hit:
+        if (
+          requesting_player.hand_state != Player_Hand_States.Receiving_Cards 
+          and requesting_player.hand_state != Player_Hand_States.Took_A_Card
+        ):
+          return False
+        # if self.hand_is_over_21(requestors_hand):
+        #   return False
+        self.deal_cards(requesting_player.hand)
+        requesting_player.hand_state = Player_Hand_States.Took_A_Card
+        return True
+      case Player_Actions.Stand:
+        requesting_player.hand_state = Player_Hand_States.Standing
+        return True
+      case Player_Actions.Double_Down:
+        if requesting_player.hand_state != Player_Hand_States.Receiving_Cards:
+          print("can't double down")
+          return False
+        if requesting_player.hand_bet > requesting_player.total_money:
+          print("you don't have enough money")
+          return False
+        self.deal_cards(requesting_player.hand)
+        player_bet = requesting_player.hand_bet
+        requesting_player.total_money -= player_bet
+        requesting_player.hand_bet += player_bet
+        requesting_player.hand_state = Player_Hand_States.Doubled_Down
+        return True
+      case Player_Actions.Split:
+        ...
+      case Player_Actions.Surrender:
+        ...
+  
+  def hand_is_over_21(self, hand: Card_Cluster) -> bool:
+    all_hands_are_over_21 = (
+      possible_value > 21 
+      for possible_value in self.all_possible_hand_values(hand)
+    )
+    return all(all_hands_are_over_21)
+    # return all(map(lambda possible_value: possible_value > 21, self.all_possible_hand_values(hand)))
+  
+  def hand_is_21(self, hand: Card_Cluster) -> bool:
+    is_21_list = (
+      possible_value == 21 
+      for possible_value in self.all_possible_hand_values(hand)
+    )
+    return any(is_21_list)
+
+  def compare_to_21(self, hand: Card_Cluster) -> int:
+    if self.hand_is_21(hand):
+      return Hand_Comparison_To_21.Equal_To_21
+    if self.hand_is_over_21(hand):
+      return Hand_Comparison_To_21.Greater_Than_21
+    return Hand_Comparison_To_21.Smaller_Than_21
+  
+  def all_possible_hand_values(self, hand: Card_Cluster) -> list[int]:
+    aces = [card for card in hand if card.number == Numbers.Ace]
+    if len(aces) > 0:
+      return [
+        sum(
+          self.card_value(card) if card.number != Numbers.Ace else value 
+          for card in hand
+        )
+        for ace in aces
+        for value in (Numbers.Ace, 11)
+      ]
+    return [sum(self.card_value(card) for card in hand)]
+  
+  def card_value(self, card: Card) -> int:
+    return card.number if card.number <= 10 else 10
+
+
+
 
 class Blackjack_Game:
-  def __init__(self, number_of_players: int, number_of_decks: int=1, play_forever: bool=False) -> None:
-    self.dealer = Dealer(number_of_decks, reshuffle_when_deck_is_empty=play_forever)
-    self.players = [Player(f"Player {index}") for index in range(number_of_players)]
+  def __init__(self, dealer: Dealer, players: list[Player], min_bet: int=0) -> None:
+    self.dealer = dealer
+    self.players = players
 
     self.playing = False
-    self.play_forever = play_forever
+    self.play_forever = dealer
+
+    self.min_bet = min_bet
+
+    self.play_forever = self.dealer.reshuffle_when_deck_is_empty
 
   
   def start_game(self) -> None:
@@ -64,7 +297,9 @@ class Blackjack_Game:
 
 
       round_number += 1
-      self.starting_sequence()
+      continue_game = self.starting_sequence()
+      if not continue_game:
+        break
       print("")
       print("")
       # print(" round cycle")
@@ -133,8 +368,7 @@ class Blackjack_Game:
         else: # if dealer hasn't got blackjack
           for player in self.playing_and_card_receiving_players():
             while True:
-              # player_input = input(f"player {player.player_name}, enter action: ").strip().title()
-              player_input = "Stand"
+              player_input = input(f"player {player.player_name}, enter action: ").strip().title()
               try:
                 # success = self.dealer.request_action(player.hand, player_action_to_int[player_input])
                 success = self.dealer.request_action(player, player_action_to_int[player_input])
@@ -203,8 +437,14 @@ class Blackjack_Game:
             else:
               player.state = Player_States.Lost
 
+      # resolve all bets
+      for player in self.players:
+        dealer_ran_out_of_money = self.dealer.resolve_bet(player)
+        if dealer_ran_out_of_money:
+          break
 
       print("")
+      print(self.dealer.total_money)
       print(" result")
       print(f"round {round_number} results")
       print(
@@ -215,10 +455,15 @@ class Blackjack_Game:
         print(
           f"{player.player_name} {int_to_player_state[player.state]}", 
           player.hand, 
-          self.dealer.all_possible_hand_values(player.hand)
+          self.dealer.all_possible_hand_values(player.hand),
+          player.total_money
         )
 
       self.collect_all_hands()
+
+      if dealer_ran_out_of_money:
+        print("house ran out of money")
+        break
 
       # end of round
       print("")
@@ -235,13 +480,37 @@ class Blackjack_Game:
       # also reset player states
       player.state = Player_States.Playing
       player.hand_state = Player_Hand_States.Receiving_Cards
+    
+    # disqualify player without enough money
+    for player in self.players:
+      if player.total_money < self.min_bet:
+        print(f"player {player.player_name} disqualified")
+        player.state = Player_States.Idle
+    
+    # if there are no players end game
+    if len(list(self.playing_players())) < 1:
+      print("all players are disqualified")
+      return False
 
-    self.dealer.deal_cards_to_all(self.all_hands(), 1)
+    # ask for bets
+    print("asking for bets")
+    print(f"minimum bet amount: {self.min_bet}")
+    for player in self.playing_players():
+      self.dealer.ask_for_bet(player, self.min_bet)
+
+    self.dealer.deal_cards_to_all([
+      player.hand
+      for player in self.playing_players()
+    ], 1)
     # hidden card
     self.dealer.deal_cards(self.dealer.hand, 1)
-    self.dealer.deal_cards_to_all(self.all_hands(), 1)
+    self.dealer.deal_cards_to_all([
+      player.hand
+      for player in self.playing_players()
+    ], 1)
     # open card (hole card)
     self.dealer.deal_cards(self.dealer.hand, 1)
+    return True
   
   def collect_all_hands(self) -> None:
     if len(self.dealer.hand) > 0:
@@ -269,7 +538,6 @@ class Blackjack_Game:
     #     player.hand, 
     #     self.dealer.all_possible_hand_values(player.hand)
     #   )
-  
   def all_hands(self) -> list[Card_Cluster]:
     return (player.hand for player in self.players)
   
@@ -320,211 +588,6 @@ class Blackjack_Game:
     self.dealer.reshuffle_when_deck_is_empty = value
 
 
-class Dealer:
-  def __init__(self, number_of_decks: int=1, reshuffle_when_deck_is_empty: bool=False) -> None:
-    # self.deck = Deck()
-    # self.hand = Card_Cluster()
-    # self.used_cards = Card_Cluster()
-    self.reshuffle_when_deck_is_empty = reshuffle_when_deck_is_empty
-    self.deck = Deck(number_of_decks)
-    self.hand = Card_Cluster()
-    self.used_cards = Card_Cluster()
-  
-  def shuffle_deck(self) -> None:
-    self.deck.shuffle_deck()
-  
-  def used_cards_to_deck(self) -> None:
-    self.deck.cards.add_cards(self.used_cards.remove_cards_from_top(len(self.used_cards)))
-    self.deck.shuffle_deck()
-    # burn card
-    burn_card = self.deck.cards.remove_from_top()
-    self.used_cards.add_card(burn_card)
-
-  
-  def enough_cards_check(func):
-    def ooga(self, source, destination, number_of_cards: int=1) -> None:
-      if len(source) < number_of_cards:
-        if source == self.deck.cards:
-          self.used_cards_to_deck()
-          print("NO CARDS LEFT, RESHUFFLING THE DECK")
-          print("")
-      func(self, source, destination, number_of_cards)
-    return ooga
-
-  # @enough_cards_check
-  def move_cards(self, source: Card_Cluster, destination: Card_Cluster, number_of_cards: int=1) -> None:
-    if self.reshuffle_when_deck_is_empty:
-      if len(source) < number_of_cards:
-        if source == self.deck.cards:
-          print("NO CARDS LEFT, RESHUFFLING THE DECK")
-          print("")
-          self.used_cards_to_deck()
-    destination.add_cards(source.remove_cards_from_top(number_of_cards))
-  
-  def deal_cards(self, destination: Card_Cluster, number_of_cards: int=1) -> None:
-    self.move_cards(self.deck.cards, destination, number_of_cards)
-  
-  def deal_cards_to_all(self, destinations: list[Card_Cluster], number_of_cards: int=1) -> None:
-    for destination in destinations:
-      self.deal_cards(destination, number_of_cards)
-  
-  # def request_action(self, requestors_hand: Card_Cluster, action: int) -> bool:
-  def request_action(self, requesting_player, action: int) -> bool:
-    match action:
-      case Player_Actions.Hit:
-        if (
-          requesting_player.hand_state != Player_Hand_States.Receiving_Cards 
-          and requesting_player.hand_state != Player_Hand_States.Took_A_Card
-        ):
-          return False
-        # if self.hand_is_over_21(requestors_hand):
-        #   return False
-        self.deal_cards(requesting_player.hand)
-        requesting_player.hand_state = Player_Hand_States.Took_A_Card
-        return True
-      case Player_Actions.Stand:
-        requesting_player.hand_state = Player_Hand_States.Standing
-        return True
-      case Player_Actions.Double_Down:
-        if requesting_player.hand_state != Player_Hand_States.Receiving_Cards:
-          return False
-        self.deal_cards(requesting_player.hand)
-        requesting_player.hand_state = Player_Hand_States.Doubled_Down
-        return True
-      case Player_Actions.Split:
-        ...
-      case Player_Actions.Surrender:
-        ...
-  
-  def hand_is_over_21(self, hand: Card_Cluster) -> bool:
-    all_hands_are_over_21 = (
-      possible_value > 21 
-      for possible_value in self.all_possible_hand_values(hand)
-    )
-    return all(all_hands_are_over_21)
-    # return all(map(lambda possible_value: possible_value > 21, self.all_possible_hand_values(hand)))
-  
-  def hand_is_21(self, hand: Card_Cluster) -> bool:
-    is_21_list = (
-      possible_value == 21 
-      for possible_value in self.all_possible_hand_values(hand)
-    )
-    return any(is_21_list)
-
-  def compare_to_21(self, hand: Card_Cluster) -> int:
-    if self.hand_is_21(hand):
-      return Hand_Comparison_To_21.Equal_To_21
-    if self.hand_is_over_21(hand):
-      return Hand_Comparison_To_21.Greater_Than_21
-    return Hand_Comparison_To_21.Smaller_Than_21
-  
-  def all_possible_hand_values(self, hand: Card_Cluster) -> list[int]:
-    aces = [card for card in hand if card.number == Numbers.Ace]
-    if len(aces) > 0:
-      return [
-        sum(
-          self.card_value(card) if card.number != Numbers.Ace else value 
-          for card in hand
-        )
-        for ace in aces
-        for value in (Numbers.Ace, 11)
-      ]
-    return [sum(self.card_value(card) for card in hand)]
-  
-  def card_value(self, card: Card) -> int:
-    return card.number if card.number <= 10 else 10
-
-
-class Hand_Comparison_To_21:
-  Smaller_Than_21 = 1
-  Equal_To_21 = 2
-  Greater_Than_21 = 3
-
-class Player_States:
-  Idle = 1
-  Playing = 2
-  Lost = 3
-  Won = 4
-  Pushed = 5
-player_state_to_int = {
-  "Idle": 1,
-  "Playing": 2,
-  "Lost": 3,
-  "Won": 4,
-  "Pushed": 5,
-}
-int_to_player_state = {value: key for key, value in player_state_to_int.items()}
-
-class Player_Hand_States:
-  Receiving_Cards = 1
-  Standing = 2
-  Doubled_Down = 3
-  Not_Playing = 4
-  Took_A_Card = 5
-  Hit_Blackjack = 6
-player_hand_states_to_int = {
-  "Receiving Cards": 1,
-  "Standing": 2,
-  "Doubled Down": 3,
-  "Not Playing": 4,
-  "Took A Card": 5,
-  "Hit Blackjack": 6,
-}
-int_to_player_hand_states = {value: key for key, value in player_hand_states_to_int.items()}
-
-
-class Player:
-  def __init__(self, player_name: str) -> None:
-    self.player_name = player_name
-    self.hand = Card_Cluster()
-    self.state = Player_States.Idle
-    self.hand_state = Player_Hand_States.Not_Playing
-  
-  @property
-  def state(self) -> int:
-    return self._state
-  
-  @state.setter
-  def state(self, value: int) -> None:
-    self._state = value
-    match value:
-      case Player_States.Playing:
-        pass
-        # self.hand_state = Player_Hand_States.Receiving_Cards
-      # case Player_States.Idle | Player_States.Lost | Player_States.Won | Player_States.Pushed:
-      case _:
-        self.hand_state = Player_Hand_States.Not_Playing
-
-  
-  # def hit(self) -> None:
-  #   """
-  #   Take another card.
-  #   """
-  #   ...
-  
-  # def stand(self) -> None:
-  #   """
-  #   Take no more cards.
-  #   """
-  #   ...
-
-  # def double_down(self) -> None:
-  #   """
-  #   Take no more cards.
-  #   """
-  #   ...
-
-  # def split_hand(self) -> None:
-  #   """
-  #   Take no more cards.
-  #   """
-  #   ...
-
-  # def surrender(self) -> None:
-  #   """
-  #   Take no more cards.
-  #   """
-  #   ...
 
 
 if __name__ == '__main__':
